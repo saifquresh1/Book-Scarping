@@ -1,0 +1,72 @@
+# Define your item pipelines here
+#
+# Don't forget to add your pipeline to the ITEM_PIPELINES setting
+# See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
+
+
+# useful for handling different item types with a single interface
+from itemadapter import ItemAdapter
+
+
+class BookscraperPipeline:
+    def process_item(self, item, spider):
+        
+        adapter = ItemAdapter(item)
+        
+        field_names = adapter.field_names()
+        for field_name in field_names:
+            if field_name != 'description':
+                value = adapter.get(field_name)
+                adapter[field_name] = value[0].strip()
+        
+        ## Category & Product Type --> switch to lowercase
+        for key in ['category', 'product_type']:
+            value = adapter.get(key)
+            if value:
+                adapter[key] = value.lower()
+
+
+
+        ## Price --> convert to float
+        for price_key in ['price', 'price_excl_tax', 'price_incl_tax', 'tax']:
+            value = adapter.get(price_key)
+            if value:
+                value = value.replace('£', '').strip()
+                try:
+                    adapter[price_key] = float(value)
+                except ValueError:
+                    adapter[price_key] = 0.0  # fallback if blank or invalid
+            else:
+                adapter[price_key] = 0.0
+
+
+        ## Availability --> extract number of books in stock
+        availability_string = adapter.get('availability')
+        split_string_array = availability_string.split('(')
+        if len(split_string_array) < 2:
+            adapter['availability'] = 0
+        else:
+            availability_array = split_string_array[1].split(' ')
+            adapter['availability'] = int(availability_array[0])
+
+
+
+        ## Reviews --> convert string to number
+        num_reviews_string = adapter.get('num_reviews')
+        adapter['num_reviews'] = int(num_reviews_string)
+
+
+        ## Stars --> convert text to number
+        stars_string = adapter.get('stars', '')
+        stars_map = {
+            'zero': 0,
+            'one': 1,
+            'two': 2,
+            'three': 3,
+            'four': 4,
+            'five': 5
+        }
+        stars_value = stars_string.split()[-1].lower() if stars_string else ''
+        adapter['stars'] = stars_map.get(stars_value, 0)
+        
+        return item
